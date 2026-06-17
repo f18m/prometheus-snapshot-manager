@@ -1,0 +1,33 @@
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-admin-api"
+    volumes:
+      - prometheus_data:/prometheus
+    networks:
+      - monitoring
+
+  prometheus-snapshot-manager:
+    image: ghcr.io/f18m/prometheus-snapshot-manager:latest
+    volumes:
+      - prometheus_data:/prometheus:ro
+      - ./config.yaml:/etc/prometheus-snapshot-manager/config.yaml:ro
+      - /backup/prometheus:/backup/prometheus
+    environment:
+      - SFTP_PASSWORD=mysecretpassword
+      - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+
+networks:
+  monitoring:
+    driver: bridge
