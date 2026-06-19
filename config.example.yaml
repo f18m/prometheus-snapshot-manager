@@ -1,0 +1,52 @@
+prometheus:
+  url: "http://prometheus:9090"
+  timeout: "30s"
+  snapshot_dir: "/prometheus/snapshots"
+  tls_skip_verify: false
+  basic_auth:
+    username: ""
+    password: ""
+
+schedule:
+  cron: "0 0 2 * * *"
+  timezone: "Europe/Rome"
+  run_on_startup: false
+
+compression:
+  format: "tar.gz"
+  level: 6
+
+retention:
+  keep_within: "168h"
+  keep_minimum: 3
+  keep_maximum: 30
+  keep_daily: 7
+  keep_weekly: 4
+  keep_monthly: 6
+  cleanup_prometheus_snapshots: true
+
+targets:
+  - name: "local"
+    type: "local"
+    local:
+      path: "/backup/prometheus"
+
+notifications:
+  apprise:
+    enabled: true
+    config_file: "/etc/apprise/apprise.yml"
+    urls: []
+    on_success: true
+    on_failure: true
+    title_template: "[prometheus-snapshot-manager] {{ .Status }}: {{ .SnapshotName }}"
+    body_template: |
+      Status:   {{ .Status }}
+      Snapshot: {{ .SnapshotName }}
+      Duration: {{ .Duration }}
+      Targets:  {{ .Targets }}
+      Error:    {{ .Error }}
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
