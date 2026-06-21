@@ -1,11 +1,11 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -16,6 +16,7 @@ import (
 	"github.com/f18m/prometheus-snapshot-manager/internal/retention"
 	"github.com/f18m/prometheus-snapshot-manager/internal/snapshot_api"
 	"github.com/f18m/prometheus-snapshot-manager/internal/target"
+	"github.com/f18m/prometheus-snapshot-manager/internal/utils"
 )
 
 // Manager is the core orchestrator of the prometheus-snapshot-manager application.
@@ -118,20 +119,28 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 
 	diskSnapshotter := snapshot_api.NewDiskSnapshotter(snapshotPath)
 
-	archiveName, archiveFullPath, err := diskSnapshotter.ArchiveFilename(time.Now().UTC())
+	archiveName, err := diskSnapshotter.ArchiveFilename(time.Now().UTC())
 	if err != nil {
 		return err
 	}
-	archiveBytes, err := diskSnapshotter.BuildArchive(m.cfg.Compression.Level)
+	archivePath := filepath.Join(m.cfg.Prometheus.SnapshotArchiveDir, snapshotName+"-"+archiveName)
+	archiveSize, err := diskSnapshotter.BuildArchiveToFile(archivePath, m.cfg.Compression.Level)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if rmErr := os.Remove(archivePath); rmErr != nil && !os.IsNotExist(rmErr) {
+			m.logger.Warn("failed to cleanup local archive file", "path", archivePath, "error", rmErr)
+		} else {
+			m.logger.Info("local archive file successfully cleaned up", "path", archivePath)
+		}
+	}()
 
-	m.logger.Info("snapshot archive created", "name", archiveFullPath, "size", formatBytesSI(int64(len(archiveBytes))))
+	m.logger.Info("snapshot archive created", "path", archivePath, "size", utils.FormatBytesSI(archiveSize))
 
 	// upload to targets
 
-	if err := m.uploadAll(ctx, archiveName, archiveBytes); err != nil {
+	if err := m.uploadAll(ctx, archiveName, archivePath, archiveSize); err != nil {
 		return err
 	}
 
@@ -150,7 +159,7 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 			if err := os.RemoveAll(snapshotPath); err != nil {
 				return err
 			} else {
-				m.logger.Info("cleanup snapshot dir", "path", snapshotPath)
+				m.logger.Info("successfully cleaned up snapshot dir", "path", snapshotPath)
 			}
 		}
 	}
@@ -205,10 +214,10 @@ func (m *Manager) Prune(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) uploadAll(ctx context.Context, archiveName string, archive []byte) error {
+func (m *Manager) uploadAll(ctx context.Context, archiveName, archivePath string, archiveSize int64) error {
 	if m.dryRun {
 		for _, t := range m.targets {
-			m.logger.Info("dry-run upload", "target", t.Name(), "file", archiveName, "size", len(archive))
+			m.logger.Info("dry-run upload", "target", t.Name(), "file", archiveName, "size", utils.FormatBytesSI(archiveSize))
 		}
 		return nil
 	}
@@ -225,11 +234,17 @@ func (m *Manager) uploadAll(ctx context.Context, archiveName string, archive []b
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := t.Upload(ctx, archiveName, bytes.NewReader(archive)); err != nil {
+			f, err := os.Open(filepath.Clean(archivePath))
+			if err != nil {
 				ch <- uploadErr{target: t.Name(), err: err}
 				return
 			}
-			m.logger.Info("upload complete", "target", t.Name(), "file", archiveName)
+			defer f.Close()
+
+			if err := t.Upload(ctx, m.logger, archiveName, f); err != nil {
+				ch <- uploadErr{target: t.Name(), err: err}
+				return
+			}
 		}()
 	}
 
@@ -252,22 +267,4 @@ func (m *Manager) targetNames() string {
 		names = append(names, t.Name())
 	}
 	return strings.Join(names, ",")
-}
-
-func formatBytesSI(n int64) string {
-	const unit = int64(1000)
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-
-	div := float64(unit)
-	exp := 0
-	for v := n / unit; v >= unit && exp < 2; v /= unit {
-		div *= float64(unit)
-		exp++
-	}
-
-	value := float64(n) / div
-	suffixes := []string{"kB", "MB", "GB"}
-	return fmt.Sprintf("%.2f %s", value, suffixes[exp])
 }

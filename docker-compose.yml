@@ -27,7 +27,7 @@ services:
     volumes:
       # config
       - ./config.example.yaml:/etc/prometheus-snapshot-manager/config.yaml:ro
-      # data to backup -- needs rw to allow snapshot deletion (after upload) if cleanup is enabled in config
+      # data to backup -- needs rw to allow for snapshot archive creation&deletion (transient file)
       - prometheus_data:/prometheus:rw
       # backup destination:
       - ./backup/prometheus:/backup/prometheus:rw

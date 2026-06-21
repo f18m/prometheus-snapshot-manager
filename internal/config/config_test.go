@@ -70,4 +70,7 @@ targets:
 	if cfg.Compression.Level != 6 {
 		t.Fatalf("unexpected compression level: %d", cfg.Compression.Level)
 	}
+	if cfg.Prometheus.SnapshotArchiveDir != "/prometheus/snapshots-mgr-temp" {
+		t.Fatalf("unexpected snapshot archive dir: %s", cfg.Prometheus.SnapshotArchiveDir)
+	}
 }

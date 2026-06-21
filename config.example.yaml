@@ -21,6 +21,13 @@ prometheus:
   # Rationale: Default location based on official Prometheus Docker image structure
   snapshot_dir: "/prometheus/snapshots"
 
+  # Directory where prometheus-snapshot-manager writes temporary archive files before upload
+  # Purpose: Controls where large tar.gz files are built, allowing users to keep archive I/O on a fast/writable volume
+  # Possible values: Any valid filesystem path writable by prometheus-snapshot-manager
+  # Default: "/prometheus/snapshots-mgr-temp"
+  # Rationale: Keeps temporary archive I/O close to Prometheus data by default and avoids cross-device /tmp bottlenecks
+  snapshot_archive_dir: "/prometheus/snapshots-mgr-temp"
+
   # Skip TLS certificate verification when connecting to Prometheus
   # Purpose: Allows connecting to Prometheus over HTTPS with self-signed or invalid certificates
   # Possible values: true (skip verification) or false (verify certificates)

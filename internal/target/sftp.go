@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"path"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/f18m/prometheus-snapshot-manager/internal/config"
 	"github.com/f18m/prometheus-snapshot-manager/internal/retention"
+	"github.com/f18m/prometheus-snapshot-manager/internal/utils"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -28,7 +30,7 @@ func NewSFTPTarget(name string, cfg config.SFTPConfig) *SFTPTarget {
 
 func (t *SFTPTarget) Name() string { return t.name }
 
-func (t *SFTPTarget) Upload(ctx context.Context, filename string, content io.Reader) error {
+func (t *SFTPTarget) Upload(ctx context.Context, logger *slog.Logger, filename string, content io.Reader) error {
 	c, s, err := t.connect(ctx)
 	if err != nil {
 		return err
@@ -39,13 +41,20 @@ func (t *SFTPTarget) Upload(ctx context.Context, filename string, content io.Rea
 	if err := s.MkdirAll(t.cfg.RemotePath); err != nil {
 		return err
 	}
-	f, err := s.Create(path.Join(t.cfg.RemotePath, filename))
+
+	fullPath := path.Join(t.cfg.RemotePath, filename)
+
+	f, err := s.Create(fullPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, content)
-	return err
+	written, err := io.Copy(f, content)
+	if err != nil {
+		return err
+	}
+	logger.Info("upload complete", "target", t.Name(), "file", fullPath, "written", utils.FormatBytesSI(written))
+	return nil
 }
 
 func (t *SFTPTarget) List(ctx context.Context) ([]FileInfo, error) {

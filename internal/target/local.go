@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/f18m/prometheus-snapshot-manager/internal/retention"
+	"github.com/f18m/prometheus-snapshot-manager/internal/utils"
 )
 
 type LocalTarget struct {
@@ -21,16 +23,21 @@ func NewLocalTarget(name, path string) *LocalTarget {
 
 func (t *LocalTarget) Name() string { return t.name }
 
-func (t *LocalTarget) Upload(_ context.Context, filename string, content io.Reader) error {
+func (t *LocalTarget) Upload(_ context.Context, logger *slog.Logger, filename string, content io.Reader) error {
 	if err := os.MkdirAll(t.path, 0o755); err != nil {
 		return err
 	}
-	f, err := os.Create(filepath.Join(t.path, filename))
+
+	fullPath := filepath.Join(t.path, filename)
+	f, err := os.Create(fullPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, content)
+
+	written, err := io.Copy(f, content)
+	logger.Info("upload complete", "target", t.Name(), "file", fullPath, "written", utils.FormatBytesSI(written))
+
 	return err
 }
 

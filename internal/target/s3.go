@@ -3,6 +3,7 @@ package target
 import (
 	"context"
 	"io"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -42,7 +43,7 @@ func NewS3Target(ctx context.Context, name string, cfg config.S3Config) (*S3Targ
 
 func (t *S3Target) Name() string { return t.name }
 
-func (t *S3Target) Upload(ctx context.Context, filename string, content io.Reader) error {
+func (t *S3Target) Upload(ctx context.Context, logger *slog.Logger, filename string, content io.Reader) error {
 	uploader := manager.NewUploader(t.client)
 	_, err := uploader.Upload(ctx, &s3.PutObjectInput{
 		Bucket:       &t.cfg.Bucket,
@@ -50,7 +51,11 @@ func (t *S3Target) Upload(ctx context.Context, filename string, content io.Reade
 		Body:         content,
 		StorageClass: types.StorageClass(t.cfg.StorageClass),
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	logger.Info("upload complete", "target", t.Name(), "file", t.key(filename))
+	return nil
 }
 
 func (t *S3Target) List(ctx context.Context) ([]FileInfo, error) {

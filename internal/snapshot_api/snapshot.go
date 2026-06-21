@@ -111,11 +111,81 @@ func NewDiskSnapshotter(snapshotDir string) *DiskSnapshotter {
 	return &DiskSnapshotter{snapshotDir: snapshotDir}
 }
 
-func (d *DiskSnapshotter) BuildArchive(gzipLevel int) ([]byte, error) {
+// BuildInMemoryArchive creates a gzip-compressed tar archive fully in memory (bytes.Buffer),
+// walking snapshotDir recursively and adding all non-directory entries with relative paths.
+// It returns an error for invalid gzip settings, filesystem/stat/open/read/copy failures,
+// and tar/gzip close/write failures, while ensuring writers are closed on error paths.
+func (d *DiskSnapshotter) BuildInMemoryArchive(gzipLevel int) ([]byte, error) {
 	var buf bytes.Buffer
-	gz, err := gzip.NewWriterLevel(&buf, gzipLevel)
-	if err != nil {
+	if err := d.writeArchive(&buf, gzipLevel); err != nil {
 		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// BuildArchiveToFile writes a gzip-compressed tar archive to archivePath on disk
+// and returns its final size in bytes.
+func (d *DiskSnapshotter) BuildArchiveToFile(archivePath string, gzipLevel int) (int64, error) {
+	cleanArchivePath := filepath.Clean(archivePath)
+	if err := d.validateArchiveOutputPath(cleanArchivePath); err != nil {
+		return 0, err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cleanArchivePath), 0o755); err != nil {
+		return 0, err
+	}
+
+	f, err := os.Create(cleanArchivePath)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := d.writeArchive(f, gzipLevel); err != nil {
+		_ = f.Close()
+		_ = os.Remove(cleanArchivePath)
+		return 0, err
+	}
+
+	if err := f.Close(); err != nil {
+		_ = os.Remove(cleanArchivePath)
+		return 0, err
+	}
+
+	st, err := os.Stat(cleanArchivePath)
+	if err != nil {
+		return 0, err
+	}
+
+	return st.Size(), nil
+}
+
+func (d *DiskSnapshotter) validateArchiveOutputPath(archivePath string) error {
+	snapshotDirAbs, err := filepath.Abs(d.snapshotDir)
+	if err != nil {
+		return err
+	}
+
+	archivePathAbs, err := filepath.Abs(archivePath)
+	if err != nil {
+		return err
+	}
+
+	rel, err := filepath.Rel(snapshotDirAbs, archivePathAbs)
+	if err != nil {
+		return err
+	}
+
+	if rel == "." || (!strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && rel != "..") {
+		return fmt.Errorf("archive output path %q must be outside snapshot directory %q", archivePathAbs, snapshotDirAbs)
+	}
+
+	return nil
+}
+
+func (d *DiskSnapshotter) writeArchive(dst io.Writer, gzipLevel int) error {
+	gz, err := gzip.NewWriterLevel(dst, gzipLevel)
+	if err != nil {
+		return err
 	}
 	tw := tar.NewWriter(gz)
 
@@ -151,29 +221,30 @@ func (d *DiskSnapshotter) BuildArchive(gzipLevel int) ([]byte, error) {
 		return err
 	})
 	if err != nil {
-		tw.Close()
-		gz.Close()
-		return nil, err
+		_ = tw.Close()
+		_ = gz.Close()
+		return err
 	}
 	if err := tw.Close(); err != nil {
-		gz.Close()
-		return nil, err
+		_ = gz.Close()
+		return err
 	}
 	if err := gz.Close(); err != nil {
-		return nil, err
+		return err
 	}
-	return buf.Bytes(), nil
+
+	return nil
 }
 
-func (d *DiskSnapshotter) ArchiveFilename(now time.Time) (string, string, error) {
+func (d *DiskSnapshotter) ArchiveFilename(now time.Time) (string, error) {
 	raw := make([]byte, 3)
 	if _, err := rand.Read(raw); err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	fn := fmt.Sprintf("prom-snapshot_%s_%s.tar.gz",
 		now.UTC().Format(archiveTimeLayout),
 		hex.EncodeToString(raw))
 
-	return fn, filepath.Join(d.snapshotDir, fn), nil
+	return fn, nil
 }

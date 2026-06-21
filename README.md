@@ -34,6 +34,7 @@ services:
 | `prometheus.url` | string | - | Prometheus base URL |
 | `prometheus.timeout` | duration | `30s` | API and wait timeout |
 | `prometheus.snapshot_dir` | string | - | Filesystem snapshot root |
+| `prometheus.snapshot_archive_dir` | string | `/prometheus/snapshots-mgr-temp` | Temporary directory used to build archive files before upload |
 | `prometheus.tls_skip_verify` | bool | `false` | Skip TLS verification |
 | `prometheus.basic_auth.username` | string | `""` | Optional basic auth username |
 | `prometheus.basic_auth.password` | string | `""` | Optional basic auth password |

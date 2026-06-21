@@ -36,11 +36,28 @@ func TestBuildArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	ds := NewDiskSnapshotter(d)
-	b, err := ds.BuildArchive(6)
+	b, err := ds.BuildInMemoryArchive(6)
 	if err != nil {
 		t.Fatalf("build archive: %v", err)
 	}
 	if len(b) == 0 {
 		t.Fatal("archive is empty")
+	}
+
+	archiveOutDir := t.TempDir()
+	archivePath := filepath.Join(archiveOutDir, "snapshot.tar.gz")
+	size, err := ds.BuildArchiveToFile(archivePath, 6)
+	if err != nil {
+		t.Fatalf("build archive to file: %v", err)
+	}
+	if size == 0 {
+		t.Fatal("archive file size is zero")
+	}
+	st, err := os.Stat(archivePath)
+	if err != nil {
+		t.Fatalf("stat archive file: %v", err)
+	}
+	if st.Size() != size {
+		t.Fatalf("archive file size mismatch: got %d want %d", st.Size(), size)
 	}
 }
