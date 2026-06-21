@@ -15,4 +15,8 @@ targets:
       path: "/backup/prometheus"
 
 retention:
-  keep_within: "1h"
+  keep_within: "10m"
+
+compression:
+  format: "tar"
+

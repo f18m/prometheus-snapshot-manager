@@ -124,10 +124,12 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 		return err
 	}
 	archivePath := filepath.Join(m.cfg.Prometheus.SnapshotArchiveTempDir, snapshotName+"-"+archiveName)
+	archiveStart := time.Now()
 	archiveSize, err := diskSnapshotter.BuildArchiveToFile(archivePath, m.cfg.Compression.Level)
 	if err != nil {
 		return err
 	}
+	archiveDuration := time.Since(archiveStart)
 	defer func() {
 		if rmErr := os.Remove(archivePath); rmErr != nil && !os.IsNotExist(rmErr) {
 			m.logger.Warn("failed to cleanup local archive file", "path", archivePath, "error", rmErr)
@@ -136,7 +138,7 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 		}
 	}()
 
-	m.logger.Info("snapshot archive created", "path", archivePath, "size", utils.FormatBytesSI(archiveSize))
+	m.logger.Info("snapshot archive created", "path", archivePath, "size", utils.FormatBytesSI(archiveSize), "duration", archiveDuration)
 
 	// upload to targets
 
@@ -215,6 +217,7 @@ func (m *Manager) Prune(ctx context.Context) error {
 }
 
 func (m *Manager) uploadAll(ctx context.Context, archiveName, archivePath string, archiveSize int64) error {
+	uploadStart := time.Now()
 	if m.dryRun {
 		for _, t := range m.targets {
 			m.logger.Info("dry-run upload", "target", t.Name(), "file", archiveName, "size", utils.FormatBytesSI(archiveSize))
@@ -257,6 +260,8 @@ func (m *Manager) uploadAll(ctx context.Context, archiveName, archivePath string
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("upload failed: %s", strings.Join(errs, "; "))
+	} else {
+		m.logger.Info("all uploads completed successfully", "targets", m.targetNames(), "duration", time.Since(uploadStart))
 	}
 	return nil
 }
