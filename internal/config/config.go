@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/f18m/prometheus-snapshot-manager/internal/utils"
 	"gopkg.in/yaml.v3"
 )
 
@@ -86,7 +87,7 @@ func (p *PrometheusConfig) UnmarshalYAML(value *yaml.Node) error {
 	p.BasicAuth = r.BasicAuth
 
 	if r.Timeout != "" {
-		d, err := time.ParseDuration(r.Timeout)
+		d, err := utils.ParseDuration(r.Timeout)
 		if err != nil {
 			return fmt.Errorf("invalid prometheus.timeout: %w", err)
 		}
@@ -125,7 +126,7 @@ func (s *ScheduleConfig) UnmarshalYAML(value *yaml.Node) error {
 
 	// Parse interval if provided
 	if r.Interval != "" {
-		d, err := time.ParseDuration(r.Interval)
+		d, err := utils.ParseDuration(r.Interval)
 		if err != nil {
 			return fmt.Errorf("invalid schedule.interval: %w", err)
 		}
@@ -199,7 +200,7 @@ func (r *RetentionConfig) UnmarshalYAML(value *yaml.Node) error {
 	r.CleanupPrometheusSnapshots = rawData.CleanupPrometheusSnapshots
 
 	if rawData.KeepWithin != "" {
-		d, err := time.ParseDuration(rawData.KeepWithin)
+		d, err := utils.ParseDuration(rawData.KeepWithin)
 		if err != nil {
 			return fmt.Errorf("invalid retention.keep_within: %w", err)
 		}

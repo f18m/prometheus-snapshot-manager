@@ -4,7 +4,6 @@
 [![Release](https://img.shields.io/github/v/release/f18m/prometheus-snapshot-manager)](https://github.com/f18m/prometheus-snapshot-manager/releases)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/f18m/prometheus-snapshot-manager)](./go.mod)
 [![License](https://img.shields.io/github/license/f18m/prometheus-snapshot-manager)](./LICENSE)
-[![Docker Pulls](https://img.shields.io/docker/pulls/f18m/prometheus-snapshot-manager)](https://hub.docker.com/)
 
 A production-ready headless daemon/CLI that periodically triggers Prometheus TSDB snapshots, archives them as `tar.gz`, uploads to one or more backup targets (local/SFTP/S3-compatible), applies retention pruning, and sends success/failure notifications through Apprise.
 
@@ -113,6 +112,12 @@ go mod tidy
 go vet ./...
 go test ./...
 go build ./cmd/prometheus-snapshot-manager
+```
+
+Or using [Just](https://github.com/casey/just):
+
+```bash
+just build
 ```
 
 ## Contributing
