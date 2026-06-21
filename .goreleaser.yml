@@ -14,12 +14,5 @@ archives:
 checksum:
   name_template: checksums.txt
 
-dockers:
-  - image_templates:
-      - ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/prometheus-snapshot-manager:{{ .Tag }}
-      - ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/prometheus-snapshot-manager:latest
-    dockerfile: Dockerfile
-    use: buildx
-
 changelog:
   sort: asc
