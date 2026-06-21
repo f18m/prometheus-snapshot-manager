@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestResolveSecretEnv(t *testing.T) {
@@ -62,8 +63,9 @@ targets:
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if cfg.Schedule.Timezone != "UTC" {
-		t.Fatalf("unexpected timezone: %s", cfg.Schedule.Timezone)
+	expectedTZ := time.UTC
+	if cfg.Schedule.Timezone != expectedTZ {
+		t.Fatalf("unexpected timezone: got %v, want %v", cfg.Schedule.Timezone, expectedTZ)
 	}
 	if cfg.Compression.Level != 6 {
 		t.Fatalf("unexpected compression level: %d", cfg.Compression.Level)

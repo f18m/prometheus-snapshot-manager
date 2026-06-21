@@ -9,21 +9,25 @@ import (
 )
 
 type Runner interface {
+	// RunCycle executes a single snapshot cycle, including snapshot
+	// * creation,
+	// * upload,
+	// * retention pruning, and
+	// * notifications.
 	RunCycle(context.Context) error
 }
 
-func Run(ctx context.Context, timezone, cronExpr, interval string, runOnStartup bool, runner Runner) error {
+// Run is the scheduler entry point. It supports running a task on startup, at a fixed interval, or based on a cron expression.
+// timezone must be a valid *time.Location (already loaded and validated by config).
+// interval is a pointer that may be nil; if nil, cron scheduling is used.
+func Run(ctx context.Context, timezone *time.Location, cronExpr string, interval *time.Duration, runOnStartup bool, runner Runner) error {
 	if runOnStartup {
 		if err := runner.RunCycle(ctx); err != nil {
 			return err
 		}
 	}
-	if interval != "" {
-		d, err := time.ParseDuration(interval)
-		if err != nil {
-			return err
-		}
-		t := time.NewTicker(d)
+	if interval != nil {
+		t := time.NewTicker(*interval)
 		defer t.Stop()
 		for {
 			select {
@@ -36,12 +40,8 @@ func Run(ctx context.Context, timezone, cronExpr, interval string, runOnStartup 
 			}
 		}
 	}
-	loc, err := time.LoadLocation(timezone)
-	if err != nil {
-		return err
-	}
 	parser := cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	c := cron.New(cron.WithLocation(loc), cron.WithParser(parser))
+	c := cron.New(cron.WithLocation(timezone), cron.WithParser(parser))
 	if _, err := c.AddFunc(cronExpr, func() { _ = runner.RunCycle(ctx) }); err != nil {
 		return fmt.Errorf("invalid cron expression: %w", err)
 	}

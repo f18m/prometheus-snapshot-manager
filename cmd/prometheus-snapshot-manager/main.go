@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"github.com/f18m/prometheus-snapshot-manager/internal/app"
@@ -94,7 +93,7 @@ func loadRuntime(path, overrideLevel string) (*config.Config, *slog.Logger, erro
 		return nil, nil, err
 	}
 	if overrideLevel != "" {
-		cfg.Logging.Level = overrideLevel
+		cfg.Logging.Level = config.LogLevel(overrideLevel)
 	}
 	output := os.Stdout
 	if cfg.Logging.Output != "" && cfg.Logging.Output != "stdout" {
@@ -105,19 +104,19 @@ func loadRuntime(path, overrideLevel string) (*config.Config, *slog.Logger, erro
 		output = f
 	}
 	var level slog.Level
-	switch strings.ToLower(cfg.Logging.Level) {
-	case "debug":
+	switch cfg.Logging.Level {
+	case config.LogLevelDebug:
 		level = slog.LevelDebug
-	case "warn":
+	case config.LogLevelWarn:
 		level = slog.LevelWarn
-	case "error":
+	case config.LogLevelError:
 		level = slog.LevelError
 	default:
 		level = slog.LevelInfo
 	}
 	opts := &slog.HandlerOptions{Level: level}
 	var h slog.Handler
-	if cfg.Logging.Format == "text" {
+	if cfg.Logging.Format == config.LogFormatText {
 		h = slog.NewTextHandler(output, opts)
 	} else {
 		h = slog.NewJSONHandler(output, opts)

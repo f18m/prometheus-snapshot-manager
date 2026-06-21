@@ -18,6 +18,38 @@ import (
 	"github.com/f18m/prometheus-snapshot-manager/internal/target"
 )
 
+// Manager is the core orchestrator of the prometheus-snapshot-manager application.
+// It coordinates the complete lifecycle of snapshot creation, archiving, distribution,
+// and retention across multiple backup targets.
+//
+// Architecture and Responsibilities:
+//   - Creates snapshots from a remote Prometheus server via its HTTP API
+//   - Compresses snapshots into archives (tar.gz, tar.bz2, etc.)
+//   - Distributes archives to multiple backup targets in parallel (local filesystem, SFTP, S3)
+//   - Implements retention policies to manage backup storage (keeps minimum/maximum snapshots, enforces time windows)
+//   - Sends notifications via Apprise (email, Slack, Discord, etc.) on success or failure
+//
+// Application Flow:
+// The application scheduler (external to this package) invokes Manager.RunCycle() on a schedule:
+//  1. RunCycle() creates a new Prometheus snapshot and waits for completion
+//  2. The snapshot is compressed using configured compression settings
+//  3. The archive is distributed to all configured targets via uploadAll()
+//  4. Retention policies are applied via Prune() to cleanup old backups across targets
+//  5. Prometheus internal snapshot directories are optionally cleaned up to free disk space
+//  6. Notifications are sent with the cycle result (success/failure with timing and error details)
+//
+// Dependencies:
+//   - cfg: Application configuration (Prometheus URL, scheduling, retention, targets, notifications)
+//   - logger: Structured logging (slog) for operational visibility
+//   - dryRun: When true, simulates operations without actually modifying targets or Prometheus
+//   - targets: List of backup destinations (0..N configured backup targets)
+//   - notifier: Sends async notifications about backup results
+//
+// Key Design Patterns:
+//   - Concurrent uploads: Uses goroutines + sync.WaitGroup to upload to all targets in parallel
+//   - Error aggregation: Collects errors from concurrent uploads and reports as a single failure
+//   - Context propagation: Respects context cancellation and timeouts throughout the cycle
+//   - Dry-run mode: Allows validating configuration without modifying production data
 type Manager struct {
 	cfg      *config.Config
 	logger   *slog.Logger
@@ -53,7 +85,7 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger, dryRun bo
 
 func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 	start := time.Now()
-	timeout, _ := time.ParseDuration(m.cfg.Prometheus.Timeout)
+	timeout := m.cfg.Prometheus.Timeout
 	snapCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -123,12 +155,8 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 
 func (m *Manager) Prune(ctx context.Context) error {
 	keepWithin := time.Duration(0)
-	if m.cfg.Retention.KeepWithin != "" {
-		d, err := time.ParseDuration(m.cfg.Retention.KeepWithin)
-		if err != nil {
-			return err
-		}
-		keepWithin = d
+	if m.cfg.Retention.KeepWithin != nil {
+		keepWithin = *m.cfg.Retention.KeepWithin
 	}
 
 	policy := retention.Policy{
