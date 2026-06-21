@@ -138,7 +138,7 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 		}
 	}()
 
-	m.logger.Info("snapshot archive created", "path", archivePath, "size", utils.FormatBytesSI(archiveSize), "duration", archiveDuration)
+	m.logger.Info("snapshot archive created", "path", archivePath, "size", utils.FormatBytesSI(archiveSize), "duration_seconds", archiveDuration.Seconds())
 
 	// upload to targets
 
@@ -261,7 +261,7 @@ func (m *Manager) uploadAll(ctx context.Context, archiveName, archivePath string
 	if len(errs) > 0 {
 		return fmt.Errorf("upload failed: %s", strings.Join(errs, "; "))
 	} else {
-		m.logger.Info("all uploads completed successfully", "targets", m.targetNames(), "duration", time.Since(uploadStart))
+		m.logger.Info("all uploads completed successfully", "targets", m.targetNames(), "duration_seconds", time.Since(uploadStart).Seconds())
 	}
 	return nil
 }
