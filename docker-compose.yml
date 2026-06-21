@@ -5,8 +5,20 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--web.enable-admin-api"
+    ports:
+      - "9090:9090"
     volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
+    networks:
+      - monitoring
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - /:/host:ro,rslave
     networks:
       - monitoring
 
@@ -14,7 +26,7 @@ services:
     image: ghcr.io/f18m/prometheus-snapshot-manager:latest
     volumes:
       - prometheus_data:/prometheus:ro
-      - ./config.yaml:/etc/prometheus-snapshot-manager/config.yaml:ro
+      - ./config.example.yaml:/etc/prometheus-snapshot-manager/config.yaml:ro
       - /backup/prometheus:/backup/prometheus
     environment:
       - SFTP_PASSWORD=mysecretpassword
@@ -24,6 +36,7 @@ services:
     restart: unless-stopped
     depends_on:
       - prometheus
+      - node-exporter
 
 volumes:
   prometheus_data:

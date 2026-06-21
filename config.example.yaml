@@ -1,44 +1,201 @@
+# Prometheus server connection settings
 prometheus:
+  # URL of the Prometheus server to connect to
+  # Purpose: Specifies the endpoint for taking snapshots and querying metrics
+  # Possible values: Any valid HTTP/HTTPS URL (e.g., http://localhost:9090, https://prometheus.example.com:9090)
+  # Default: "http://prometheus:9090"
+  # Rationale: Default assumes Prometheus runs in the same Docker network (monitoring) with hostname 'prometheus'
   url: "http://prometheus:9090"
+
+  # Timeout for Prometheus API requests
+  # Purpose: Prevents the application from hanging on unresponsive Prometheus connections
+  # Possible values: Valid Go duration strings (e.g., "10s", "5m", "1h")
+  # Default: "30s"
+  # Rationale: 30 seconds provides a reasonable balance between reliability and responsiveness for snapshot creation
   timeout: "30s"
+
+  # Directory where Prometheus stores its snapshots internally
+  # Purpose: Specifies where snapshots are created on the Prometheus container filesystem
+  # Possible values: Any valid filesystem path writable by the Prometheus process
+  # Default: "/prometheus/snapshots"
+  # Rationale: Default location based on official Prometheus Docker image structure
   snapshot_dir: "/prometheus/snapshots"
+
+  # Skip TLS certificate verification when connecting to Prometheus
+  # Purpose: Allows connecting to Prometheus over HTTPS with self-signed or invalid certificates
+  # Possible values: true (skip verification) or false (verify certificates)
+  # Default: false
+  # Rationale: Security best practice—only set to true if HTTPS certificates are invalid and you trust the connection
   tls_skip_verify: false
+
+  # Optional HTTP Basic Authentication credentials for Prometheus
+  # Purpose: Authenticate requests to a password-protected Prometheus instance
+  # Possible values: Any valid username/password pair, or empty strings to disable
+  # Default: Empty strings (no authentication)
+  # Rationale: Default assumes no authentication; provide credentials only if Prometheus requires them
   basic_auth:
     username: ""
     password: ""
 
+# Snapshot scheduling configuration
 schedule:
+  # Cron expression for snapshot timing
+  # Purpose: Defines when snapshots are automatically created
+  # Possible values: Standard cron syntax (minute hour day month weekday)
+  # Default: "0 0 2 * * *" (02:00 UTC every day)
+  # Rationale: Early morning time reduces impact on active monitoring; daily frequency balances freshness with storage cost
   cron: "0 0 2 * * *"
+
+  # Timezone for interpreting the cron expression
+  # Purpose: Converts cron times from UTC to local timezone
+  # Possible values: IANA timezone names (e.g., "UTC", "America/New_York", "Europe/London")
+  # Default: "Europe/Rome"
+  # Rationale: Author's local timezone; adjust to your location for meaningful schedule times
   timezone: "Europe/Rome"
+
+  # Whether to create a snapshot immediately on application startup
+  # Purpose: Ensures a fresh snapshot exists right after deployment or restart
+  # Possible values: true (run immediately) or false (wait for next scheduled time)
+  # Default: false
+  # Rationale: Default avoids unexpected resource usage; enable for fresh backup after deployment
   run_on_startup: false
 
+# Snapshot compression settings
 compression:
+  # Archive format for snapshots
+  # Purpose: Determines the compression algorithm and archive type
+  # Possible values: "tar.gz" (gzip), "tar.bz2" (bzip2), "tar.xz" (xz), "tar" (uncompressed)
+  # Default: "tar.gz"
+  # Rationale: gzip offers excellent balance of speed and compression; widely compatible; good for storage efficiency
   format: "tar.gz"
+
+  # Compression level (1-9, higher = better compression but slower)
+  # Purpose: Trade-off between compression ratio and CPU/time spent during archiving
+  # Possible values: Integer 1-9 (1=fastest/least compression, 9=slowest/best compression)
+  # Default: 6
+  # Rationale: Level 6 provides good compression (~70-80% size reduction) without excessive CPU overhead
   level: 6
 
+# Snapshot retention and cleanup policies
 retention:
+  # Keep all snapshots created within this time period regardless of other rules
+  # Purpose: Ensures recent snapshots are never deleted for quick recovery
+  # Possible values: Valid Go duration strings (e.g., "24h", "7d", "168h")
+  # Default: "168h" (7 days)
+  # Rationale: 7-day window covers typical incident detection and response time
   keep_within: "168h"
+
+  # Minimum number of snapshots to always keep
+  # Purpose: Provides a safety net to ensure backups exist even with aggressive cleanup
+  # Possible values: Positive integer (typically 2-5)
+  # Default: 3
+  # Rationale: 3 snapshots (recent, previous, and one older) provides reasonable safety margin
   keep_minimum: 3
+
+  # Maximum number of snapshots to keep (hard limit)
+  # Purpose: Prevents unbounded disk usage growth
+  # Possible values: Positive integer (typically 20-100 depending on snapshot size and storage)
+  # Default: 30
+  # Rationale: Allows ~1 month of daily snapshots while bounding storage; adjust based on your storage capacity
   keep_maximum: 30
+
+  # Keep at least this many daily snapshots (one per day, oldest kept)
+  # Purpose: Ensures granular coverage for rolling back within recent weeks
+  # Possible values: Positive integer (typically 7-30)
+  # Default: 7
+  # Rationale: 7 days allows recovery to any point in the past week with daily granularity
   keep_daily: 7
+
+  # Keep at least this many weekly snapshots (one per week, oldest kept)
+  # Purpose: Provides monthly coverage with weekly resolution
+  # Possible values: Positive integer (typically 4-12)
+  # Default: 4
+  # Rationale: 4 weeks provides roughly one month of coverage at weekly resolution
   keep_weekly: 4
+
+  # Keep at least this many monthly snapshots (one per month, oldest kept)
+  # Purpose: Maintains long-term historical snapshots for annual comparisons or legal retention
+  # Possible values: Positive integer (typically 6-12)
+  # Default: 6
+  # Rationale: 6 months of monthly snapshots balances historical coverage with storage cost
   keep_monthly: 6
+
+  # Automatically delete Prometheus internal snapshots after upload
+  # Purpose: Frees disk space on the Prometheus server by removing snapshot data once safely stored
+  # Possible values: true (delete) or false (keep internal snapshots)
+  # Default: true
+  # Rationale: Prevents disk space exhaustion on Prometheus server; local copies exist in backup targets
   cleanup_prometheus_snapshots: true
 
+# Backup target destinations
+# Purpose: Defines where snapshots are copied after creation
+# Supported types: "local" (filesystem), "sftp" (SSH File Transfer Protocol), "s3" (AWS S3 or compatible)
 targets:
+  # Example local filesystem target
   - name: "local"
+    # Type of backup destination
+    # Possible values: "local", "sftp", "s3"
     type: "local"
+    # Local filesystem-specific configuration
     local:
+      # Path where snapshots are stored
+      # Purpose: Specifies the backup directory on the local filesystem
+      # Possible values: Any valid, writable filesystem path
+      # Default: "/backup/prometheus"
+      # Rationale: Mounted path in Docker for external NAS or storage; allows persistent backups if container is removed
       path: "/backup/prometheus"
 
+# Notification settings for backup status
 notifications:
+  # Apprise notifications (supports 130+ notification services: email, Slack, Discord, Telegram, etc.)
   apprise:
+    # Enable/disable Apprise notifications
+    # Purpose: Controls whether snapshot completion/failure notifications are sent
+    # Possible values: true (enabled) or false (disabled)
+    # Default: true
+    # Rationale: Enabled by default so issues are communicated; disable if no notification service is configured
     enabled: true
+
+    # Path to Apprise configuration file defining notification services
+    # Purpose: References a file with credentials and service definitions for all notification targets
+    # Possible values: Any valid filesystem path to a YAML file
+    # Default: "/etc/apprise/apprise.yml"
+    # Rationale: Standard location in Docker; allows centralized configuration of all notification services
     config_file: "/etc/apprise/apprise.yml"
+
+    # Inline notification URLs (alternative to config_file)
+    # Purpose: Specifies notification destinations directly (e.g., for single services like email or Slack)
+    # Possible values: List of Apprise service URLs (empty list = disabled)
+    # Default: [] (empty)
+    # Rationale: Default uses config_file instead; inline URLs for simple single-service setups
     urls: []
+
+    # Send notification on successful snapshot completion
+    # Purpose: Confirms that backups are working and reaching their destination
+    # Possible values: true (notify) or false (silent)
+    # Default: true
+    # Rationale: Helpful for monitoring backup health; silence if notifications become noisy
     on_success: true
+
+    # Send notification on backup failure
+    # Purpose: Alerts you to issues requiring immediate attention (connection failures, storage full, etc.)
+    # Possible values: true (notify) or false (silent)
+    # Default: true
+    # Rationale: Critical for operational awareness; should always be enabled
     on_failure: true
+
+    # Notification title template
+    # Purpose: Customizes the subject/title of notification messages
+    # Possible values: Go text/template string with variables: .Status, .SnapshotName, .Duration, .Targets, .Error
+    # Default: "[prometheus-snapshot-manager] {{ .Status }}: {{ .SnapshotName }}"
+    # Rationale: Concise, identifies the service and outcome; allows quick triage from subject alone
     title_template: "[prometheus-snapshot-manager] {{ .Status }}: {{ .SnapshotName }}"
+
+    # Notification body template
+    # Purpose: Customizes the content/body of notification messages with detailed backup information
+    # Possible values: Go text/template string with variables: .Status, .SnapshotName, .Duration, .Targets, .Error
+    # Default: Includes Status, Snapshot name, Duration, Targets, and Error details
+    # Rationale: Provides enough information to diagnose issues without being overly verbose
     body_template: |
       Status:   {{ .Status }}
       Snapshot: {{ .SnapshotName }}
@@ -46,7 +203,25 @@ notifications:
       Targets:  {{ .Targets }}
       Error:    {{ .Error }}
 
+# Application logging configuration
 logging:
+  # Log level for filtering output
+  # Purpose: Controls the verbosity of logging output
+  # Possible values: "debug" (verbose), "info" (normal), "warn" (warnings only), "error" (errors only)
+  # Default: "info"
+  # Rationale: "info" captures important events (snapshots, uploads, errors) without excessive debug verbosity
   level: "info"
+
+  # Log message format
+  # Purpose: Determines how log entries are structured
+  # Possible values: "json" (machine-readable), "text" (human-readable)
+  # Default: "json"
+  # Rationale: JSON format is ideal for log aggregation systems (ELK, Splunk, etc.); parse-friendly in containers
   format: "json"
+
+  # Log output destination
+  # Purpose: Specifies where log messages are written
+  # Possible values: "stdout" (console, captured by Docker logs), "stderr" (error stream), or file path
+  # Default: "stdout"
+  # Rationale: stdout allows Docker containers to manage logs centrally; compatible with standard log shipping
   output: "stdout"

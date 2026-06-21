@@ -42,7 +42,13 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger, dryRun bo
 			targets = append(targets, s3t)
 		}
 	}
-	return &Manager{cfg: cfg, logger: logger, dryRun: dryRun, targets: targets, notifier: notify.New(cfg.Notifications.Apprise)}, nil
+	return &Manager{
+		cfg:      cfg,
+		logger:   logger,
+		dryRun:   dryRun,
+		targets:  targets,
+		notifier: notify.New(cfg.Notifications.Apprise),
+	}, nil
 }
 
 func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
