@@ -57,23 +57,23 @@ type Config struct {
 }
 
 type PrometheusConfig struct {
-	URL                string
-	Timeout            time.Duration
-	SnapshotDir        string
-	SnapshotArchiveDir string
-	TLSSkipVerify      bool
-	BasicAuth          PromBasicAuth
+	URL                    string
+	Timeout                time.Duration
+	SnapshotDir            string
+	SnapshotArchiveTempDir string
+	TLSSkipVerify          bool
+	BasicAuth              PromBasicAuth
 }
 
 // UnmarshalYAML parses YAML into PrometheusConfig, converting timeout string to time.Duration.
 func (p *PrometheusConfig) UnmarshalYAML(value *yaml.Node) error {
 	type raw struct {
-		URL                string        `yaml:"url"`
-		Timeout            string        `yaml:"timeout"`
-		SnapshotDir        string        `yaml:"snapshot_dir"`
-		SnapshotArchiveDir string        `yaml:"snapshot_archive_dir"`
-		TLSSkipVerify      bool          `yaml:"tls_skip_verify"`
-		BasicAuth          PromBasicAuth `yaml:"basic_auth"`
+		URL                    string        `yaml:"url"`
+		Timeout                string        `yaml:"timeout"`
+		SnapshotDir            string        `yaml:"snapshot_dir"`
+		SnapshotArchiveTempDir string        `yaml:"snapshot_archive_temp_dir"`
+		TLSSkipVerify          bool          `yaml:"tls_skip_verify"`
+		BasicAuth              PromBasicAuth `yaml:"basic_auth"`
 	}
 	r := &raw{}
 	if err := value.Decode(r); err != nil {
@@ -81,7 +81,7 @@ func (p *PrometheusConfig) UnmarshalYAML(value *yaml.Node) error {
 	}
 	p.URL = r.URL
 	p.SnapshotDir = r.SnapshotDir
-	p.SnapshotArchiveDir = r.SnapshotArchiveDir
+	p.SnapshotArchiveTempDir = r.SnapshotArchiveTempDir
 	p.TLSSkipVerify = r.TLSSkipVerify
 	p.BasicAuth = r.BasicAuth
 
@@ -327,8 +327,11 @@ func (c *Config) applyDefaults() {
 	if c.Prometheus.Timeout == 0 {
 		c.Prometheus.Timeout = 30 * time.Second
 	}
-	if c.Prometheus.SnapshotArchiveDir == "" {
-		c.Prometheus.SnapshotArchiveDir = "/prometheus/snapshots-mgr-temp"
+	if c.Prometheus.SnapshotDir == "" {
+		c.Prometheus.SnapshotDir = "/prometheus/snapshots"
+	}
+	if c.Prometheus.SnapshotArchiveTempDir == "" {
+		c.Prometheus.SnapshotArchiveTempDir = "/prometheus/snapshots-mgr-temp"
 	}
 	if c.Compression.Format == "" {
 		c.Compression.Format = CompressionFormatTarGz
@@ -426,8 +429,8 @@ func (c *Config) Validate() error {
 	if c.Prometheus.SnapshotDir == "" {
 		return errors.New("prometheus.snapshot_dir is required")
 	}
-	if c.Prometheus.SnapshotArchiveDir == "" {
-		return errors.New("prometheus.snapshot_archive_dir is required")
+	if c.Prometheus.SnapshotArchiveTempDir == "" {
+		return errors.New("prometheus.snapshot_archive_temp_dir is required")
 	}
 	// Timeout validation already done in UnmarshalYAML
 

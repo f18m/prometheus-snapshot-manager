@@ -40,7 +40,6 @@ func TestLoadAndValidate(t *testing.T) {
 prometheus:
   url: "http://localhost:9090"
   timeout: "10s"
-  snapshot_dir: "/tmp/snapshots"
 schedule:
   interval: "1h"
   timezone: "UTC"
@@ -70,7 +69,10 @@ targets:
 	if cfg.Compression.Level != 6 {
 		t.Fatalf("unexpected compression level: %d", cfg.Compression.Level)
 	}
-	if cfg.Prometheus.SnapshotArchiveDir != "/prometheus/snapshots-mgr-temp" {
-		t.Fatalf("unexpected snapshot archive dir: %s", cfg.Prometheus.SnapshotArchiveDir)
+	if cfg.Prometheus.SnapshotDir != "/prometheus/snapshots" {
+		t.Fatalf("unexpected snapshot dir: %s", cfg.Prometheus.SnapshotDir)
+	}
+	if cfg.Prometheus.SnapshotArchiveTempDir != "/prometheus/snapshots-mgr-temp" {
+		t.Fatalf("unexpected snapshot archive dir: %s", cfg.Prometheus.SnapshotArchiveTempDir)
 	}
 }

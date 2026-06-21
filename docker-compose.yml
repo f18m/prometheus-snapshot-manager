@@ -26,7 +26,7 @@ services:
     image: ghcr.io/f18m/prometheus-snapshot-manager:latest
     volumes:
       # config
-      - ./config.example.yaml:/etc/prometheus-snapshot-manager/config.yaml:ro
+      - ./your-config.yaml:/etc/prometheus-snapshot-manager/config.yaml:ro
       # data to backup -- needs rw to allow for snapshot archive creation&deletion (transient file)
       - prometheus_data:/prometheus:rw
       # backup destination:

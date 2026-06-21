@@ -123,7 +123,7 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 	if err != nil {
 		return err
 	}
-	archivePath := filepath.Join(m.cfg.Prometheus.SnapshotArchiveDir, snapshotName+"-"+archiveName)
+	archivePath := filepath.Join(m.cfg.Prometheus.SnapshotArchiveTempDir, snapshotName+"-"+archiveName)
 	archiveSize, err := diskSnapshotter.BuildArchiveToFile(archivePath, m.cfg.Compression.Level)
 	if err != nil {
 		return err

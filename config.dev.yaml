@@ -1,0 +1,18 @@
+# Configuration file useful for local dev
+
+prometheus:
+  url: "http://prometheus:9090"
+
+schedule:
+  cron: "*/5 * * * *" # every 5 minutes for testing
+  run_on_startup: true
+
+targets:
+  # Example local filesystem target
+  - name: "local"
+    type: "local"
+    local:
+      path: "/backup/prometheus"
+
+retention:
+  keep_within: "1h"

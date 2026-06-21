@@ -1,3 +1,7 @@
+# Prometheus Snapshot Manager Configuration
+# This file documents the configuration options for prometheus-snapshot-manager
+# See https://github.com/f18m/prometheus-snapshot-manager
+
 # Prometheus server connection settings
 prometheus:
   # URL of the Prometheus server to connect to
@@ -26,7 +30,7 @@ prometheus:
   # Possible values: Any valid filesystem path writable by prometheus-snapshot-manager
   # Default: "/prometheus/snapshots-mgr-temp"
   # Rationale: Keeps temporary archive I/O close to Prometheus data by default and avoids cross-device /tmp bottlenecks
-  snapshot_archive_dir: "/prometheus/snapshots-mgr-temp"
+  snapshot_archive_temp_dir: "/prometheus/snapshots-mgr-temp"
 
   # Skip TLS certificate verification when connecting to Prometheus
   # Purpose: Allows connecting to Prometheus over HTTPS with self-signed or invalid certificates
@@ -51,8 +55,7 @@ schedule:
   # Possible values: Standard cron syntax (minute hour day month weekday)
   # Default: "0 2 * * *" (02:00 UTC every day)
   # Rationale: Early morning time reduces impact on active monitoring; daily frequency balances freshness with storage cost
-  #cron: "0 2 * * *"
-  cron: "*/5 * * * *" # every 5 minutes for testing
+  cron: "0 2 * * *"
 
   # Timezone for interpreting the cron expression
   # Purpose: Converts cron times from UTC to local timezone
@@ -66,7 +69,7 @@ schedule:
   # Possible values: true (run immediately) or false (wait for next scheduled time)
   # Default: false
   # Rationale: Default avoids unexpected resource usage; enable for fresh backup after deployment
-  run_on_startup: true
+  run_on_startup: false
 
 # Snapshot compression settings
 compression:
@@ -103,9 +106,9 @@ retention:
   # Maximum number of snapshots to keep (hard limit)
   # Purpose: Prevents unbounded disk usage growth
   # Possible values: Positive integer (typically 20-100 depending on snapshot size and storage)
-  # Default: 30
+  # Default: 20
   # Rationale: Allows ~1 month of daily snapshots while bounding storage; adjust based on your storage capacity
-  keep_maximum: 30
+  keep_maximum: 20
 
   # Keep at least this many daily snapshots (one per day, oldest kept)
   # Purpose: Ensures granular coverage for rolling back within recent weeks

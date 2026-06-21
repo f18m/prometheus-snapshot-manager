@@ -34,7 +34,7 @@ services:
 | `prometheus.url` | string | - | Prometheus base URL |
 | `prometheus.timeout` | duration | `30s` | API and wait timeout |
 | `prometheus.snapshot_dir` | string | - | Filesystem snapshot root |
-| `prometheus.snapshot_archive_dir` | string | `/prometheus/snapshots-mgr-temp` | Temporary directory used to build archive files before upload |
+| `prometheus.snapshot_archive_temp_dir` | string | `/prometheus/snapshots-mgr-temp` | Temporary directory used to build archive files before upload |
 | `prometheus.tls_skip_verify` | bool | `false` | Skip TLS verification |
 | `prometheus.basic_auth.username` | string | `""` | Optional basic auth username |
 | `prometheus.basic_auth.password` | string | `""` | Optional basic auth password |
@@ -66,6 +66,9 @@ services:
 | `logging.level` | string | `info` | `debug/info/warn/error` |
 | `logging.format` | string | `json` | `json` or `text` |
 | `logging.output` | string | `stdout` | `stdout` or file path |
+
+More detailed documentation for the configuration in the form
+of YAML comments in [config.docs.yaml](./config.docs.yaml)
 
 ## Secret management
 
