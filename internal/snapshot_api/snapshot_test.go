@@ -1,4 +1,4 @@
-package snapshot
+package snapshot_api
 
 import (
 	"context"
@@ -35,7 +35,8 @@ func TestBuildArchive(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(d, "chunk"), []byte("abc"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	b, err := BuildArchive(d, 6)
+	ds := NewDiskSnapshotter(d)
+	b, err := ds.BuildArchive(6)
 	if err != nil {
 		t.Fatalf("build archive: %v", err)
 	}

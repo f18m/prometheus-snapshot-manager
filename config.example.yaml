@@ -42,9 +42,10 @@ schedule:
   # Cron expression for snapshot timing
   # Purpose: Defines when snapshots are automatically created
   # Possible values: Standard cron syntax (minute hour day month weekday)
-  # Default: "0 0 2 * * *" (02:00 UTC every day)
+  # Default: "0 2 * * *" (02:00 UTC every day)
   # Rationale: Early morning time reduces impact on active monitoring; daily frequency balances freshness with storage cost
-  cron: "0 0 2 * * *"
+  #cron: "0 2 * * *"
+  cron: "*/5 * * * *" # every 5 minutes for testing
 
   # Timezone for interpreting the cron expression
   # Purpose: Converts cron times from UTC to local timezone
@@ -58,7 +59,7 @@ schedule:
   # Possible values: true (run immediately) or false (wait for next scheduled time)
   # Default: false
   # Rationale: Default avoids unexpected resource usage; enable for fresh backup after deployment
-  run_on_startup: false
+  run_on_startup: true
 
 # Snapshot compression settings
 compression:

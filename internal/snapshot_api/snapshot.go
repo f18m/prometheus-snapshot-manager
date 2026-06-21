@@ -1,4 +1,4 @@
-package snapshot
+package snapshot_api
 
 import (
 	"archive/tar"
@@ -21,6 +21,9 @@ import (
 
 const archiveTimeLayout = "2006-01-02T150405Z"
 
+// Client is the snapshot-layer API client used by app.Manager to trigger
+// Prometheus TSDB snapshots as the first step of each backup cycle.
+// See https://prometheus.io/docs/prometheus/latest/querying/api/#snapshot
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
@@ -82,7 +85,7 @@ func (c *Client) CreateSnapshot(ctx context.Context) (string, error) {
 	return payload.Data.Name, nil
 }
 
-func WaitForSnapshotDir(ctx context.Context, root, name string, pollInterval time.Duration) (string, error) {
+func (c *Client) WaitForSnapshotDirReady(ctx context.Context, root, name string, pollInterval time.Duration) (string, error) {
 	path := filepath.Join(root, name)
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -98,7 +101,17 @@ func WaitForSnapshotDir(ctx context.Context, root, name string, pollInterval tim
 	}
 }
 
-func BuildArchive(snapshotDir string, gzipLevel int) ([]byte, error) {
+// DiskSnapshotter handles filesystem-level snapshot operations after Prometheus
+// has created a snapshot directory on disk.
+type DiskSnapshotter struct {
+	snapshotDir string
+}
+
+func NewDiskSnapshotter(snapshotDir string) *DiskSnapshotter {
+	return &DiskSnapshotter{snapshotDir: snapshotDir}
+}
+
+func (d *DiskSnapshotter) BuildArchive(gzipLevel int) ([]byte, error) {
 	var buf bytes.Buffer
 	gz, err := gzip.NewWriterLevel(&buf, gzipLevel)
 	if err != nil {
@@ -106,18 +119,18 @@ func BuildArchive(snapshotDir string, gzipLevel int) ([]byte, error) {
 	}
 	tw := tar.NewWriter(gz)
 
-	err = filepath.WalkDir(snapshotDir, func(path string, d fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(d.snapshotDir, func(path string, dir fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if d.IsDir() {
+		if dir.IsDir() {
 			return nil
 		}
-		rel, err := filepath.Rel(snapshotDir, path)
+		rel, err := filepath.Rel(d.snapshotDir, path)
 		if err != nil {
 			return err
 		}
-		info, err := d.Info()
+		info, err := dir.Info()
 		if err != nil {
 			return err
 		}
@@ -152,10 +165,15 @@ func BuildArchive(snapshotDir string, gzipLevel int) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func ArchiveFilename(now time.Time) (string, error) {
+func (d *DiskSnapshotter) ArchiveFilename(now time.Time) (string, string, error) {
 	raw := make([]byte, 3)
 	if _, err := rand.Read(raw); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return fmt.Sprintf("prom-snapshot_%s_%s.tar.gz", now.UTC().Format(archiveTimeLayout), hex.EncodeToString(raw)), nil
+
+	fn := fmt.Sprintf("prom-snapshot_%s_%s.tar.gz",
+		now.UTC().Format(archiveTimeLayout),
+		hex.EncodeToString(raw))
+
+	return fn, filepath.Join(d.snapshotDir, fn), nil
 }

@@ -1,6 +1,6 @@
 //go:build integration
 
-package snapshot
+package snapshot_api
 
 import "testing"
 

@@ -25,9 +25,12 @@ services:
   prometheus-snapshot-manager:
     image: ghcr.io/f18m/prometheus-snapshot-manager:latest
     volumes:
-      - prometheus_data:/prometheus:ro
+      # config
       - ./config.example.yaml:/etc/prometheus-snapshot-manager/config.yaml:ro
-      - /backup/prometheus:/backup/prometheus
+      # data to backup -- needs rw to allow snapshot deletion (after upload) if cleanup is enabled in config
+      - prometheus_data:/prometheus:rw
+      # backup destination:
+      - ./backup/prometheus:/backup/prometheus:rw
     environment:
       - SFTP_PASSWORD=mysecretpassword
       - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE

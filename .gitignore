@@ -31,4 +31,8 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# binary
 prometheus-snapshot-manager
+
+# local testing dir
+test-backup/

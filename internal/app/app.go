@@ -14,7 +14,7 @@ import (
 	"github.com/f18m/prometheus-snapshot-manager/internal/config"
 	"github.com/f18m/prometheus-snapshot-manager/internal/notify"
 	"github.com/f18m/prometheus-snapshot-manager/internal/retention"
-	"github.com/f18m/prometheus-snapshot-manager/internal/snapshot"
+	"github.com/f18m/prometheus-snapshot-manager/internal/snapshot_api"
 	"github.com/f18m/prometheus-snapshot-manager/internal/target"
 )
 
@@ -28,22 +28,6 @@ import (
 //   - Distributes archives to multiple backup targets in parallel (local filesystem, SFTP, S3)
 //   - Implements retention policies to manage backup storage (keeps minimum/maximum snapshots, enforces time windows)
 //   - Sends notifications via Apprise (email, Slack, Discord, etc.) on success or failure
-//
-// Application Flow:
-// The application scheduler (external to this package) invokes Manager.RunCycle() on a schedule:
-//  1. RunCycle() creates a new Prometheus snapshot and waits for completion
-//  2. The snapshot is compressed using configured compression settings
-//  3. The archive is distributed to all configured targets via uploadAll()
-//  4. Retention policies are applied via Prune() to cleanup old backups across targets
-//  5. Prometheus internal snapshot directories are optionally cleaned up to free disk space
-//  6. Notifications are sent with the cycle result (success/failure with timing and error details)
-//
-// Dependencies:
-//   - cfg: Application configuration (Prometheus URL, scheduling, retention, targets, notifications)
-//   - logger: Structured logging (slog) for operational visibility
-//   - dryRun: When true, simulates operations without actually modifying targets or Prometheus
-//   - targets: List of backup destinations (0..N configured backup targets)
-//   - notifier: Sends async notifications about backup results
 //
 // Key Design Patterns:
 //   - Concurrent uploads: Uses goroutines + sync.WaitGroup to upload to all targets in parallel
@@ -89,7 +73,7 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 	snapCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	client := snapshot.NewClient(
+	client := snapshot_api.NewClient(
 		m.cfg.Prometheus.URL,
 		timeout,
 		m.cfg.Prometheus.BasicAuth.Username,
@@ -114,6 +98,8 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 		})
 	}()
 
+	// create snapshot
+
 	name, err := client.CreateSnapshot(snapCtx)
 	if err != nil {
 		return err
@@ -121,23 +107,37 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 	snapshotName = name
 	m.logger.Info("snapshot created", "name", name)
 
-	snapshotPath, err := snapshot.WaitForSnapshotDir(snapCtx, m.cfg.Prometheus.SnapshotDir, name, 500*time.Millisecond)
+	snapshotPath, err := client.WaitForSnapshotDirReady(snapCtx, m.cfg.Prometheus.SnapshotDir, name, 500*time.Millisecond)
 	if err != nil {
 		return err
 	}
 
-	archiveName, err := snapshot.ArchiveFilename(time.Now().UTC())
+	m.logger.Info("snapshot directory ready", "path", snapshotPath)
+
+	// archive snapshot
+
+	diskSnapshotter := snapshot_api.NewDiskSnapshotter(snapshotPath)
+
+	archiveName, archiveFullPath, err := diskSnapshotter.ArchiveFilename(time.Now().UTC())
 	if err != nil {
 		return err
 	}
-	archiveBytes, err := snapshot.BuildArchive(snapshotPath, m.cfg.Compression.Level)
+	archiveBytes, err := diskSnapshotter.BuildArchive(m.cfg.Compression.Level)
 	if err != nil {
 		return err
 	}
+
+	m.logger.Info("snapshot archive created", "name", archiveFullPath, "size", formatBytesSI(int64(len(archiveBytes))))
+
+	// upload to targets
 
 	if err := m.uploadAll(ctx, archiveName, archiveBytes); err != nil {
 		return err
 	}
+
+	m.logger.Info("snapshot archive uploaded", "name", archiveName)
+
+	// prune old snapshots
 
 	if err := m.Prune(ctx); err != nil {
 		return err
@@ -146,8 +146,12 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 	if m.cfg.Retention.CleanupPrometheusSnapshots {
 		if m.dryRun {
 			m.logger.Info("dry-run cleanup snapshot dir", "path", snapshotPath)
-		} else if err := os.RemoveAll(snapshotPath); err != nil {
-			return err
+		} else {
+			if err := os.RemoveAll(snapshotPath); err != nil {
+				return err
+			} else {
+				m.logger.Info("cleanup snapshot dir", "path", snapshotPath)
+			}
 		}
 	}
 	return nil
@@ -248,4 +252,22 @@ func (m *Manager) targetNames() string {
 		names = append(names, t.Name())
 	}
 	return strings.Join(names, ",")
+}
+
+func formatBytesSI(n int64) string {
+	const unit = int64(1000)
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+
+	div := float64(unit)
+	exp := 0
+	for v := n / unit; v >= unit && exp < 2; v /= unit {
+		div *= float64(unit)
+		exp++
+	}
+
+	value := float64(n) / div
+	suffixes := []string{"kB", "MB", "GB"}
+	return fmt.Sprintf("%.2f %s", value, suffixes[exp])
 }
