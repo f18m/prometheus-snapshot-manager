@@ -40,6 +40,7 @@ func main() {
 		if err != nil {
 			return err
 		}
+		logger.Info("running in snapshot mode")
 		mgr, err := app.New(cmd.Context(), cfg, logger, dryRun)
 		if err != nil {
 			return err
@@ -51,6 +52,7 @@ func main() {
 		if err != nil {
 			return err
 		}
+		logger.Info("running in prune mode")
 		mgr, err := app.New(cmd.Context(), cfg, logger, dryRun)
 		if err != nil {
 			return err
@@ -80,11 +82,18 @@ func runDaemon(ctx context.Context, cfgPath, logLevel string, dryRun bool) error
 	if err != nil {
 		return err
 	}
+	logger.Info("running in daemon mode")
 	mgr, err := app.New(ctx, cfg, logger, dryRun)
 	if err != nil {
 		return err
 	}
-	return scheduler.Run(ctx, cfg.Schedule.Timezone, cfg.Schedule.Cron, cfg.Schedule.Interval, cfg.Schedule.RunOnStartup, mgr)
+	return scheduler.Run(ctx,
+		logger,
+		cfg.Schedule.Timezone,
+		cfg.Schedule.Cron,
+		cfg.Schedule.Interval,
+		cfg.Schedule.RunOnStartup,
+		mgr)
 }
 
 func loadRuntime(path, overrideLevel string) (*config.Config, *slog.Logger, error) {
