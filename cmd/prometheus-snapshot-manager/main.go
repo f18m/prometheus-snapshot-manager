@@ -24,13 +24,25 @@ func main() {
 	root := &cobra.Command{
 		Use:   "prometheus-snapshot-manager",
 		Short: "Prometheus snapshot daemon",
+
+		// Do not print usage or errors automatically: the CLI usage is confusing to have
+		// printed on every error, and we want to control the error output format ourselves.
+		SilenceUsage:  true,
+		SilenceErrors: true,
+
+		// by default run in daemon mode:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDaemon(cmd.Context(), cfgPath, logLevel, dryRun)
 		},
 	}
+
+	// flags
+
 	root.PersistentFlags().StringVar(&cfgPath, "config", cfgPath, "path to YAML config")
 	root.PersistentFlags().StringVar(&logLevel, "log-level", "", "override log level")
 	root.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "simulate actions")
+
+	// commands
 
 	root.AddCommand(&cobra.Command{Use: "run", RunE: func(cmd *cobra.Command, _ []string) error {
 		return runDaemon(cmd.Context(), cfgPath, logLevel, dryRun)
@@ -67,10 +79,14 @@ func main() {
 		fmt.Fprintln(cmd.OutOrStdout(), version)
 	}})
 
+	// honor OS signals:
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	root.SetContext(ctx)
 
+	// execute the root command with the context that will be canceled on OS signals
+
+	root.SetContext(ctx)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
