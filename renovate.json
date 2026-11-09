@@ -5,6 +5,11 @@
   ],
   "packageRules": [
     {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions"
+    },
+    {
       "matchCategories": ["golang"],
       "groupName": "golang modules",
       "groupSlug": "golang-modules",
