@@ -32,6 +32,7 @@ services:
 |---|---|---|---|
 | `prometheus.url` | string | - | Prometheus base URL |
 | `prometheus.timeout` | duration | `30s` | API and wait timeout |
+| `prometheus.startup_wait` | duration | `5m` | Max time to wait (readiness poll on `/-/ready` plus retries of transient errors such as HTTP 503 or connection refused, with exponential backoff up to 30s) for Prometheus before failing a cycle; `0` disables waiting |
 | `prometheus.snapshot_dir` | string | - | Filesystem snapshot root |
 | `prometheus.snapshot_archive_temp_dir` | string | `/prometheus/snapshots-mgr-temp` | Temporary directory used to build archive files before upload |
 | `prometheus.tls_skip_verify` | bool | `false` | Skip TLS verification |

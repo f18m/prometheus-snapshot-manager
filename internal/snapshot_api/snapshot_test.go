@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -27,6 +28,65 @@ func TestCreateSnapshot(t *testing.T) {
 	}
 	if name != "snap-1" {
 		t.Fatalf("got %s", name)
+	}
+}
+
+func TestRetryUntilPrometheusReady(t *testing.T) {
+	var readyCalls, snapCalls int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/-/ready":
+			readyCalls++
+			if readyCalls < 2 {
+				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+			}
+		case "/api/v1/admin/tsdb/snapshot":
+			snapCalls++
+			if snapCalls < 2 {
+				http.Error(w, "starting", http.StatusServiceUnavailable)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "data": map[string]string{"name": "snap-1"}})
+		}
+	}))
+	defer ts.Close()
+
+	c := NewClient(ts.URL, 2*time.Second, "", "", false)
+	if err := c.WaitUntilReady(context.Background(), 30*time.Second, nil); err != nil {
+		t.Fatalf("wait ready: %v", err)
+	}
+	name, err := c.CreateSnapshotWithRetry(context.Background(), 30*time.Second, nil)
+	if err != nil || name != "snap-1" {
+		t.Fatalf("got %q, %v", name, err)
+	}
+	if readyCalls != 2 || snapCalls != 2 {
+		t.Fatalf("unexpected calls: ready=%d snapshot=%d", readyCalls, snapCalls)
+	}
+}
+
+func TestCreateSnapshotErrorIncludesStatus(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "admin API disabled", http.StatusMethodNotAllowed)
+	}))
+	defer ts.Close()
+
+	c := NewClient(ts.URL, 2*time.Second, "", "", false)
+	_, err := c.CreateSnapshotWithRetry(context.Background(), 30*time.Second, nil)
+	if err == nil || !strings.Contains(err.Error(), "405 Method Not Allowed: admin API disabled") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestWaitUntilReadyGivesUp(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+	}))
+	defer ts.Close()
+
+	c := NewClient(ts.URL, 2*time.Second, "", "", false)
+	err := c.WaitUntilReady(context.Background(), 1500*time.Millisecond, nil)
+	if err == nil || !strings.Contains(err.Error(), "503 Service Unavailable") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

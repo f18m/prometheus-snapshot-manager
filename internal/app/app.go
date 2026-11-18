@@ -71,8 +71,6 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger, dryRun bo
 func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 	start := time.Now()
 	timeout := m.cfg.Prometheus.Timeout
-	snapCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	client := snapshot_api.NewClient(
 		m.cfg.Prometheus.URL,
@@ -101,10 +99,21 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 
 	// create snapshot
 
-	name, err := client.CreateSnapshot(snapCtx)
+	startupWait := *m.cfg.Prometheus.StartupWait
+	if startupWait > 0 {
+		if err := client.WaitUntilReady(ctx, startupWait, m.logger); err != nil {
+			return err
+		}
+	}
+
+	name, err := client.CreateSnapshotWithRetry(ctx, startupWait, m.logger)
 	if err != nil {
 		return err
 	}
+
+	snapCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	snapshotName = name
 	m.logger.Info("snapshot created", "name", name)
 

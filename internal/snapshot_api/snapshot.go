@@ -9,9 +9,11 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -52,6 +54,109 @@ func NewClient(baseURL string, timeout time.Duration, username, password string,
 	}
 }
 
+const (
+	retryInitialBackoff = time.Second
+	retryMaxBackoff     = 30 * time.Second
+)
+
+// TransientError marks failures that are expected to resolve by themselves
+// (e.g. Prometheus still replaying its WAL), so callers may retry.
+type TransientError struct {
+	Err error
+}
+
+func (e *TransientError) Error() string { return e.Err.Error() }
+func (e *TransientError) Unwrap() error { return e.Err }
+
+func isTransientStatus(code int) bool {
+	return code == http.StatusServiceUnavailable || code == http.StatusBadGateway || code == http.StatusGatewayTimeout
+}
+
+// retryTransient runs fn until it succeeds, fails with a non-transient error, or maxWait
+// expires, sleeping with a capped exponential backoff (1s, 2s, 4s ... 30s) between attempts.
+func retryTransient(ctx context.Context, maxWait time.Duration, logger *slog.Logger, what string, fn func(context.Context) error) error {
+	deadline := time.Now().Add(maxWait)
+	backoff := retryInitialBackoff
+	for attempt := 1; ; attempt++ {
+		err := fn(ctx)
+		if err == nil {
+			return nil
+		}
+		var te *TransientError
+		if !errors.As(err, &te) || ctx.Err() != nil {
+			return err
+		}
+		if remaining := time.Until(deadline); remaining <= 0 {
+			return fmt.Errorf("gave up waiting for %s after %s: %w", what, maxWait, err)
+		} else if backoff > remaining {
+			backoff = remaining
+		}
+		if logger != nil {
+			logger.Info("waiting for Prometheus to become ready ...", "waiting_for", what, "attempt", attempt, "retry_in", backoff.String(), "error", err.Error())
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, retryMaxBackoff)
+	}
+}
+
+// classifyDoError flags HTTP transport failures (connection refused, reset, timeout...) as
+// transient, unless the caller's context itself was canceled.
+func (c *Client) classifyDoError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return err
+	}
+	return &TransientError{Err: err}
+}
+
+// WaitUntilReady polls Prometheus readiness endpoint (GET /-/ready) until it answers 200,
+// retrying with capped exponential backoff for at most maxWait. Responses that are not
+// transient (e.g. 404 from a non-Prometheus backend) are not treated as "not ready".
+func (c *Client) WaitUntilReady(ctx context.Context, maxWait time.Duration, logger *slog.Logger) error {
+	return retryTransient(ctx, maxWait, logger, "readiness endpoint", func(ctx context.Context) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/-/ready", nil)
+		if err != nil {
+			return err
+		}
+		if c.username != "" {
+			req.SetBasicAuth(c.username, c.password)
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return c.classifyDoError(ctx, err)
+		}
+		defer resp.Body.Close()
+		if isTransientStatus(resp.StatusCode) {
+			return &TransientError{Err: fmt.Errorf("prometheus not ready: %s", describeResponse(resp))}
+		}
+		return nil
+	})
+}
+
+// CreateSnapshotWithRetry is like CreateSnapshot but retries transient failures
+// (503/502/504, connection errors) with capped exponential backoff for at most maxWait.
+func (c *Client) CreateSnapshotWithRetry(ctx context.Context, maxWait time.Duration, logger *slog.Logger) (string, error) {
+	var name string
+	err := retryTransient(ctx, maxWait, logger, "snapshot API", func(ctx context.Context) error {
+		var err error
+		name, err = c.CreateSnapshot(ctx)
+		return err
+	})
+	return name, err
+}
+
+func describeResponse(resp *http.Response) string {
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	msg := resp.Status
+	if body := strings.TrimSpace(string(b)); body != "" {
+		msg += ": " + body
+	}
+	return msg
+}
+
 func (c *Client) CreateSnapshot(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/admin/tsdb/snapshot", nil)
 	if err != nil {
@@ -66,13 +171,16 @@ func (c *Client) CreateSnapshot(ctx context.Context) (string, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", c.classifyDoError(ctx, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("snapshot API failed: %s", string(b))
+		apiErr := fmt.Errorf("snapshot API failed: %s", describeResponse(resp))
+		if isTransientStatus(resp.StatusCode) {
+			return "", &TransientError{Err: apiErr}
+		}
+		return "", apiErr
 	}
 
 	var payload createSnapshotResponse

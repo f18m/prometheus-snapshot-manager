@@ -69,6 +69,9 @@ targets:
 	if cfg.Compression.Level != 6 {
 		t.Fatalf("unexpected compression level: %d", cfg.Compression.Level)
 	}
+	if cfg.Prometheus.StartupWait == nil || *cfg.Prometheus.StartupWait != 5*time.Minute {
+		t.Fatalf("unexpected startup wait: %v", cfg.Prometheus.StartupWait)
+	}
 	if cfg.Prometheus.SnapshotDir != "/prometheus/snapshots" {
 		t.Fatalf("unexpected snapshot dir: %s", cfg.Prometheus.SnapshotDir)
 	}
