@@ -79,3 +79,51 @@ targets:
 		t.Fatalf("unexpected snapshot archive dir: %s", cfg.Prometheus.SnapshotArchiveTempDir)
 	}
 }
+
+func loadConfigContent(t *testing.T, content string) (*Config, error) {
+	t.Helper()
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return Load(cfgPath)
+}
+
+const minimalConfigWithoutCleanup = `
+prometheus:
+  url: "http://localhost:9090"
+schedule:
+  interval: "1h"
+targets:
+  - name: "local"
+    type: "local"
+    local:
+      path: "/tmp/backups"
+`
+
+func TestCleanupDefaults(t *testing.T) {
+	cfg, err := loadConfigContent(t, minimalConfigWithoutCleanup)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !BoolOrDefault(cfg.Retention.CleanupPrometheusSnapshots, false) {
+		t.Fatalf("cleanup_prometheus_snapshots must default to true")
+	}
+	if !BoolOrDefault(cfg.Prometheus.CleanupArchiveTempDirOnStartup, false) {
+		t.Fatalf("cleanup_archive_temp_dir_on_startup must default to true")
+	}
+}
+
+func TestCleanupExplicitlyDisabled(t *testing.T) {
+	content := minimalConfigWithoutCleanup + `
+retention:
+  cleanup_prometheus_snapshots: false
+`
+	cfg, err := loadConfigContent(t, content)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if BoolOrDefault(cfg.Retention.CleanupPrometheusSnapshots, true) {
+		t.Fatalf("cleanup_prometheus_snapshots: false must be honored")
+	}
+}

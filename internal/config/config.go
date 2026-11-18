@@ -58,25 +58,27 @@ type Config struct {
 }
 
 type PrometheusConfig struct {
-	URL                    string
-	Timeout                time.Duration
-	StartupWait            *time.Duration
-	SnapshotDir            string
-	SnapshotArchiveTempDir string
-	TLSSkipVerify          bool
-	BasicAuth              PromBasicAuth
+	URL                            string
+	Timeout                        time.Duration
+	StartupWait                    *time.Duration
+	SnapshotDir                    string
+	SnapshotArchiveTempDir         string
+	CleanupArchiveTempDirOnStartup *bool
+	TLSSkipVerify                  bool
+	BasicAuth                      PromBasicAuth
 }
 
 // UnmarshalYAML parses YAML into PrometheusConfig, converting timeout string to time.Duration.
 func (p *PrometheusConfig) UnmarshalYAML(value *yaml.Node) error {
 	type raw struct {
-		URL                    string        `yaml:"url"`
-		Timeout                string        `yaml:"timeout"`
-		StartupWait            string        `yaml:"startup_wait"`
-		SnapshotDir            string        `yaml:"snapshot_dir"`
-		SnapshotArchiveTempDir string        `yaml:"snapshot_archive_temp_dir"`
-		TLSSkipVerify          bool          `yaml:"tls_skip_verify"`
-		BasicAuth              PromBasicAuth `yaml:"basic_auth"`
+		URL                            string        `yaml:"url"`
+		Timeout                        string        `yaml:"timeout"`
+		StartupWait                    string        `yaml:"startup_wait"`
+		SnapshotDir                    string        `yaml:"snapshot_dir"`
+		SnapshotArchiveTempDir         string        `yaml:"snapshot_archive_temp_dir"`
+		CleanupArchiveTempDirOnStartup *bool         `yaml:"cleanup_archive_temp_dir_on_startup"`
+		TLSSkipVerify                  bool          `yaml:"tls_skip_verify"`
+		BasicAuth                      PromBasicAuth `yaml:"basic_auth"`
 	}
 	r := &raw{}
 	if err := value.Decode(r); err != nil {
@@ -85,6 +87,7 @@ func (p *PrometheusConfig) UnmarshalYAML(value *yaml.Node) error {
 	p.URL = r.URL
 	p.SnapshotDir = r.SnapshotDir
 	p.SnapshotArchiveTempDir = r.SnapshotArchiveTempDir
+	p.CleanupArchiveTempDirOnStartup = r.CleanupArchiveTempDirOnStartup
 	p.TLSSkipVerify = r.TLSSkipVerify
 	p.BasicAuth = r.BasicAuth
 
@@ -186,7 +189,7 @@ type RetentionConfig struct {
 	KeepDaily                  int
 	KeepWeekly                 int
 	KeepMonthly                int
-	CleanupPrometheusSnapshots bool
+	CleanupPrometheusSnapshots *bool
 }
 
 // UnmarshalYAML parses YAML into RetentionConfig, converting keep_within string to *time.Duration.
@@ -198,7 +201,7 @@ func (r *RetentionConfig) UnmarshalYAML(value *yaml.Node) error {
 		KeepDaily                  int    `yaml:"keep_daily"`
 		KeepWeekly                 int    `yaml:"keep_weekly"`
 		KeepMonthly                int    `yaml:"keep_monthly"`
-		CleanupPrometheusSnapshots bool   `yaml:"cleanup_prometheus_snapshots"`
+		CleanupPrometheusSnapshots *bool  `yaml:"cleanup_prometheus_snapshots"`
 	}
 	rawData := &raw{}
 	if err := value.Decode(rawData); err != nil {
@@ -349,6 +352,14 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Prometheus.SnapshotArchiveTempDir == "" {
 		c.Prometheus.SnapshotArchiveTempDir = "/prometheus/snapshots-mgr-temp"
+	}
+	if c.Prometheus.CleanupArchiveTempDirOnStartup == nil {
+		enabled := true
+		c.Prometheus.CleanupArchiveTempDirOnStartup = &enabled
+	}
+	if c.Retention.CleanupPrometheusSnapshots == nil {
+		enabled := true
+		c.Retention.CleanupPrometheusSnapshots = &enabled
 	}
 	if c.Compression.Format == "" {
 		c.Compression.Format = CompressionFormatTarGz

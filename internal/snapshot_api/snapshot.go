@@ -17,11 +17,21 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
 const archiveTimeLayout = "2006-01-02T150405Z"
+
+// tempArchiveNameRe matches the names of the temporary archives written by app.Manager.RunCycle:
+// "<Prometheus snapshot name>-" followed by the name produced by DiskSnapshotter.ArchiveFilename.
+var tempArchiveNameRe = regexp.MustCompile(`^\d{8}T\d{6}Z-[0-9a-f]+-prom-snapshot_\d{4}-\d{2}-\d{2}T\d{6}Z_[0-9a-f]{6}\.tar\.gz$`)
+
+// IsTempArchiveName reports whether name could have been written as a temporary archive by this application.
+func IsTempArchiveName(name string) bool {
+	return tempArchiveNameRe.MatchString(name)
+}
 
 // Client is the snapshot-layer API client used by app.Manager to trigger
 // Prometheus TSDB snapshots as the first step of each backup cycle.

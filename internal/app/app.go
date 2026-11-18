@@ -111,14 +111,24 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 		return err
 	}
 
-	snapCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	snapshotName = name
 	m.logger.Info("snapshot created", "name", name)
 
-	snapshotPath, err := client.WaitForSnapshotDirReady(snapCtx, m.cfg.Prometheus.SnapshotDir, name, 500*time.Millisecond)
-	if err != nil {
+	// from now on the raw snapshot dir exists (or is about to): remove it on every exit path, not only on success
+	snapshotPath := filepath.Join(m.cfg.Prometheus.SnapshotDir, name)
+	defer func() {
+		if err := m.cleanupSnapshotDir(snapshotPath); err != nil {
+			m.logger.Warn("failed to cleanup snapshot dir", "path", snapshotPath, "error", err)
+			if retErr == nil {
+				retErr = err
+			}
+		}
+	}()
+
+	snapCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	if _, err := client.WaitForSnapshotDirReady(snapCtx, m.cfg.Prometheus.SnapshotDir, name, 500*time.Millisecond); err != nil {
 		return err
 	}
 
@@ -163,16 +173,56 @@ func (m *Manager) RunCycle(ctx context.Context) (retErr error) {
 		return err
 	}
 
-	if m.cfg.Retention.CleanupPrometheusSnapshots {
-		if m.dryRun {
-			m.logger.Info("dry-run cleanup snapshot dir", "path", snapshotPath)
-		} else {
-			if err := os.RemoveAll(snapshotPath); err != nil {
-				return err
-			} else {
-				m.logger.Info("successfully cleaned up snapshot dir", "path", snapshotPath)
-			}
+	return nil
+}
+
+// cleanupSnapshotDir removes the raw Prometheus snapshot directory of a cycle, if enabled.
+// Snapshots are hardlinks to the TSDB blocks, but they must be removed anyway:
+//   - once Prometheus compacts or retention-deletes blocks, the hardlinks keep the deleted blocks on disk,
+//     so the data volume grows beyond the size of the TSDB and --storage.tsdb.retention.size does not see it;
+//   - the archive uploaded to the targets is the actual backup: the raw snapshot has no further use;
+//   - if the hardlinks cannot be created (e.g. snapshot dir on another filesystem), each snapshot is a full copy of the TSDB.
+func (m *Manager) cleanupSnapshotDir(snapshotPath string) error {
+	if !*m.cfg.Retention.CleanupPrometheusSnapshots {
+		return nil
+	}
+	if m.dryRun {
+		m.logger.Info("dry-run cleanup snapshot dir", "path", snapshotPath)
+		return nil
+	}
+	if err := os.RemoveAll(snapshotPath); err != nil {
+		return err
+	}
+	m.logger.Info("successfully cleaned up snapshot dir", "path", snapshotPath)
+	return nil
+}
+
+// CleanupArchiveTempDir removes the temporary archives left in the archive temp directory by previous runs that
+// were interrupted before removing them (e.g. the process was killed while archiving or uploading).
+// It must only be called at daemon startup, when no cycle of this process is in progress. Only regular files whose
+// name could have been written by this application are removed: anything else in the directory is left untouched.
+func (m *Manager) CleanupArchiveTempDir() error {
+	dir := m.cfg.Prometheus.SnapshotArchiveTempDir
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !e.Type().IsRegular() || !snapshot_api.IsTempArchiveName(e.Name()) {
+			continue
 		}
+		path := filepath.Join(dir, e.Name())
+		if m.dryRun {
+			m.logger.Info("dry-run cleanup stale archive in archive temp dir", "path", path)
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		m.logger.Info("removed stale archive in archive temp dir", "path", path)
 	}
 	return nil
 }
