@@ -18,6 +18,14 @@ prometheus:
   # Rationale: 30 seconds provides a reasonable balance between reliability and responsiveness for snapshot creation
   timeout: "30s"
 
+  # Maximum time to wait for Prometheus to become ready
+  # Purpose: Avoids failing (and restart-looping) when Prometheus is still starting, e.g. replaying its WAL.
+  #          Polls GET /-/ready and retries transient errors (HTTP 503, connection refused) with
+  #          exponential backoff (1s -> 30s) before giving up
+  # Possible values: Valid Go duration strings (e.g., "30s", "5m"); "0s" disables waiting
+  # Default: "5m"
+  startup_wait: "5m"
+
   # Directory where Prometheus stores its snapshots internally
   # Purpose: Specifies where snapshots are created on the Prometheus container filesystem
   # Possible values: Any valid filesystem path writable by the Prometheus process

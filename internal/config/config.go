@@ -60,6 +60,7 @@ type Config struct {
 type PrometheusConfig struct {
 	URL                    string
 	Timeout                time.Duration
+	StartupWait            *time.Duration
 	SnapshotDir            string
 	SnapshotArchiveTempDir string
 	TLSSkipVerify          bool
@@ -71,6 +72,7 @@ func (p *PrometheusConfig) UnmarshalYAML(value *yaml.Node) error {
 	type raw struct {
 		URL                    string        `yaml:"url"`
 		Timeout                string        `yaml:"timeout"`
+		StartupWait            string        `yaml:"startup_wait"`
 		SnapshotDir            string        `yaml:"snapshot_dir"`
 		SnapshotArchiveTempDir string        `yaml:"snapshot_archive_temp_dir"`
 		TLSSkipVerify          bool          `yaml:"tls_skip_verify"`
@@ -92,6 +94,16 @@ func (p *PrometheusConfig) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("invalid prometheus.timeout: %w", err)
 		}
 		p.Timeout = d
+	}
+	if r.StartupWait != "" {
+		d, err := utils.ParseDuration(r.StartupWait)
+		if err != nil {
+			return fmt.Errorf("invalid prometheus.startup_wait: %w", err)
+		}
+		if d < 0 {
+			return fmt.Errorf("invalid prometheus.startup_wait: must not be negative")
+		}
+		p.StartupWait = &d
 	}
 	return nil
 }
@@ -327,6 +339,10 @@ func Load(path string) (*Config, error) {
 func (c *Config) applyDefaults() {
 	if c.Prometheus.Timeout == 0 {
 		c.Prometheus.Timeout = 30 * time.Second
+	}
+	if c.Prometheus.StartupWait == nil {
+		d := 5 * time.Minute
+		c.Prometheus.StartupWait = &d
 	}
 	if c.Prometheus.SnapshotDir == "" {
 		c.Prometheus.SnapshotDir = "/prometheus/snapshots"
