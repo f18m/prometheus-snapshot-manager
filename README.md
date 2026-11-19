@@ -1,5 +1,7 @@
 # prometheus-snapshot-manager
 
+> **Automate your Prometheus backups: schedule snapshots, compress, upload anywhere, and protect the data you care about**
+
 [![CI](https://github.com/f18m/prometheus-snapshot-manager/actions/workflows/ci.yaml/badge.svg)](https://github.com/f18m/prometheus-snapshot-manager/actions/workflows/ci.yaml)
 [![Release](https://img.shields.io/github/v/release/f18m/prometheus-snapshot-manager)](https://github.com/f18m/prometheus-snapshot-manager/releases)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/f18m/prometheus-snapshot-manager)](./go.mod)
@@ -7,13 +9,9 @@
 
 A production-ready headless daemon/CLI that periodically triggers Prometheus TSDB snapshots, archives them as `tar.gz`, uploads to one or more backup targets (local/SFTP/S3-compatible), applies retention pruning, and sends success/failure notifications through Apprise.
 
-## Comparison with prombackup
-
-`prombackup` focuses on exposing backup content and workflows through an HTTP interface. `prometheus-snapshot-manager` is intentionally upload-centric and scheduler-driven: no web server, no UI, no download endpoint—just snapshot, archive, upload, prune, notify.
-
 ## Quick start
 
-Use the included `docker-compose.example.yml`, or this minimal snippet:
+Use the included [docker-compose.example.yml](./docker-compose.yml), or this minimal snippet:
 
 ```yaml
 services:
@@ -27,6 +25,11 @@ services:
 ```
 
 ## Configuration reference
+
+Reference documentation for `prometheus-snapshot-manager` configuration in the form
+of YAML comments in [config.docs.yaml](./config.docs.yaml).
+
+Flatted table of config options:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
@@ -68,14 +71,27 @@ services:
 | `logging.format` | string | `json` | `json` or `text` |
 | `logging.output` | string | `stdout` | `stdout` or file path |
 
-More detailed documentation for the configuration in the form
-of YAML comments in [config.docs.yaml](./config.docs.yaml)
+## Notification setup
+
+Notifications use the Apprise CLI. See https://github.com/caronc/apprise for URL formats and advanced config.
+
+Minimal example:
+
+```yaml
+notifications:
+  apprise:
+    enabled: true
+    urls:
+      - "tgram://bottoken/chatid"
+```
 
 ## Secret management
 
 Any secret field can use:
 - `${ENV_VAR_NAME}` to read from environment
 - `file:/path/to/secret` to read from file and trim whitespace
+
+This makes the project Docker-secret-friendly.
 
 ## Retention policy
 
@@ -95,35 +111,13 @@ Rules are applied in order and a snapshot is kept if any keep rule matches:
 
 ## Prometheus data volume
 
-With the default paths, the raw snapshots (`prometheus.snapshot_dir`) and the temporary archives (`prometheus.snapshot_archive_temp_dir`) live inside the Prometheus data volume, next to the TSDB. They are not covered by `--storage.tsdb.retention.size` and can grow larger than the TSDB itself if they are not removed.
+With the default paths, the raw snapshots (`prometheus.snapshot_dir`) and the temporary archives (`prometheus.snapshot_archive_temp_dir`) live inside the Prometheus data volume, next to the TSDB. They are not covered by Prometheus retention settings and can grow larger than the TSDB itself if they are not removed.
 
 To avoid that, the manager:
 - removes the raw snapshot directory at the end of every cycle, on success and on failure (`retention.cleanup_prometheus_snapshots: true`, the default);
 - removes the temporary archive as soon as the cycle ends, on success and on failure;
 - at daemon startup, removes the leftovers of archives that a previous run could not remove (`prometheus.cleanup_archive_temp_dir_on_startup: true`, the default).
 
-Raw snapshots are deleted even though they are made of hardlinks to the TSDB blocks, for these reasons:
-- once Prometheus compacts or retention-deletes a block, the snapshot hardlinks keep the deleted block on disk, so the volume grows beyond the TSDB size and `--storage.tsdb.retention.size` does not account for it;
-- the uploaded archive is the backup: the raw snapshot has no further use once the archive is built;
-- hardlinks only work on the same filesystem. If the snapshot directory is on a different mount, each snapshot is a full copy of the TSDB.
-
-Not everything is covered automatically: if the process is killed with `SIGKILL` (or the host crashes) during a cycle, the raw snapshot directory of that cycle stays in `prometheus.snapshot_dir`. Such leftovers must be removed manually while the manager is stopped.
-
-`prometheus.cleanup_archive_temp_dir_on_startup` only deletes regular files whose names match the temporary archives written by this application (`<Prometheus snapshot name>-prom-snapshot_<timestamp>_<random>.tar.gz`). Any other file or directory in `prometheus.snapshot_archive_temp_dir` is left untouched.
-
-## Notification setup
-
-Notifications use the Apprise CLI. See https://github.com/caronc/apprise for URL formats and advanced config.
-
-Minimal example:
-
-```yaml
-notifications:
-  apprise:
-    enabled: true
-    urls:
-      - "tgram://bottoken/chatid"
-```
 
 ## Building from source
 
@@ -139,6 +133,13 @@ Or using [Just](https://github.com/casey/just):
 ```bash
 just build
 ```
+
+## Comparison with other projects
+
+I only know about these alternative options:
+
+* [prombackup](https://github.com/hansmi/prombackup) focuses on exposing backup content and workflows through an HTTP interface. `prometheus-snapshot-manager` is intentionally upload-centric and scheduler-driven: no web server, no UI, no download endpoint—just snapshot, archive, upload, prune, notify.
+
 
 ## Contributing
 

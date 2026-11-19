@@ -1,3 +1,10 @@
+#
+# This docker compose is an example on how to deploy prometheus-snapshot-manager
+#
+# https://github.com/f18m/prometheus-snapshot-manager
+#
+
+
 services:
   prometheus:
     image: prom/prometheus:latest

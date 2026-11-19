@@ -1,3 +1,8 @@
+#
+# This docker compose is for developing the prometheus-snapshot-manager
+# If you want to _use_ the project, look at the docker-compose.yml file instead.
+# 
+
 services:
   prometheus:
     image: prom/prometheus:latest
