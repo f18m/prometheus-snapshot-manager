@@ -36,9 +36,21 @@ prometheus:
   # Directory where prometheus-snapshot-manager writes temporary archive files before upload
   # Purpose: Controls where large tar.gz files are built, allowing users to keep archive I/O on a fast/writable volume
   # Possible values: Any valid filesystem path writable by prometheus-snapshot-manager
+  #          (leftover archives are removed at daemon startup, see cleanup_archive_temp_dir_on_startup)
   # Default: "/prometheus/snapshots-mgr-temp"
   # Rationale: Keeps temporary archive I/O close to Prometheus data by default and avoids cross-device /tmp bottlenecks
   snapshot_archive_temp_dir: "/prometheus/snapshots-mgr-temp"
+
+  # Delete leftover temporary archives in snapshot_archive_temp_dir when the daemon starts
+  # Purpose: Removes archives left behind by runs that were interrupted (e.g. process killed while archiving or uploading),
+  #          which would otherwise fill the Prometheus data volume forever
+  #          Only regular files named like the archives written by this application are removed; anything else is kept.
+  #          Not applied to the one-shot "snapshot" and "prune" commands, which may run next to a live daemon
+  # Possible values: true (delete leftover archives) or false (keep leftovers)
+  # Default: true
+  # Rationale: No cycle is in progress when the daemon starts, so archives with this application's naming are stale.
+  #          Set to false to keep leftovers, e.g. for debugging
+  cleanup_archive_temp_dir_on_startup: true
 
   # Skip TLS certificate verification when connecting to Prometheus
   # Purpose: Allows connecting to Prometheus over HTTPS with self-signed or invalid certificates
@@ -139,11 +151,15 @@ retention:
   # Rationale: 6 months of monthly snapshots balances historical coverage with storage cost
   keep_monthly: 6
 
-  # Automatically delete Prometheus internal snapshots after upload
-  # Purpose: Frees disk space on the Prometheus server by removing snapshot data once safely stored
+  # Automatically delete Prometheus internal snapshots at the end of each cycle
+  # Purpose: Frees disk space on the Prometheus server by removing the raw snapshot directory once the archive is
+  #          built, uploaded or failed. The directory is removed on success AND on failure paths
   # Possible values: true (delete) or false (keep internal snapshots)
   # Default: true
-  # Rationale: Prevents disk space exhaustion on Prometheus server; local copies exist in backup targets
+  # Rationale: Raw snapshots are hardlinks to TSDB blocks, but they are not free: once Prometheus compacts or
+  #          retention-deletes a block, the hardlink keeps the deleted block on disk, so the data volume grows beyond
+  #          the TSDB size and --storage.tsdb.retention.size does not see it. The uploaded archive is the backup.
+  #          Snapshots on another filesystem are full copies of the TSDB. Set to false only for debugging
   cleanup_prometheus_snapshots: true
 
 # Backup target destinations

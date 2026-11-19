@@ -103,6 +103,12 @@ func runDaemon(ctx context.Context, cfgPath, logLevel string, dryRun bool) error
 	if err != nil {
 		return err
 	}
+	// done only here and not in the one-shot commands: those may run next to a live daemon
+	if *cfg.Prometheus.CleanupArchiveTempDirOnStartup {
+		if err := mgr.CleanupArchiveTempDir(); err != nil {
+			logger.Warn("failed to cleanup archive temp dir at startup", "error", err)
+		}
+	}
 	return scheduler.Run(ctx,
 		logger,
 		cfg.Schedule.Timezone,

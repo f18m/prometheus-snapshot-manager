@@ -121,3 +121,29 @@ func TestBuildArchive(t *testing.T) {
 		t.Fatalf("archive file size mismatch: got %d want %d", st.Size(), size)
 	}
 }
+
+func TestIsTempArchiveName(t *testing.T) {
+	d := &DiskSnapshotter{}
+	generated, err := d.ArchiveFilename(time.Date(2026, 6, 21, 22, 55, 21, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"20260621T225521Z-0123456789abcdef-" + generated, true},
+		{"20260924T215949Z-00ff00ff00ff00ff-prom-snapshot_2026-09-24T215949Z_a1b2c3.tar.gz", true},
+		{generated, false}, // final archive name in the targets, no snapshot prefix
+		{"20260621T225521Z-0123456789abcdef-" + generated + ".part", false},
+		{"20260621T225521Z-0123456789ABCDEF-" + generated, false}, // hex is lowercase
+		{"20260621T225521Z-0123456789abcdef-prom-snapshot_2026-06-21T225521Z_A1B2C3.tar.gz", false},
+		{"notes.txt", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := IsTempArchiveName(tt.name); got != tt.want {
+			t.Errorf("IsTempArchiveName(%q) = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
